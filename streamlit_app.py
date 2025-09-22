@@ -124,7 +124,7 @@ def main():
                     "Download cleaned Excel",
                     data=excel_buffer.getvalue(),
                     file_name=download_name.replace('.csv', '.xlsx'),
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet",
                     use_container_width=True,
                 )
             except Exception as exc:
