@@ -47,14 +47,10 @@ def quote_unquoted_keys(text: str) -> str:
         return f"'{key}':"
     return UNQUOTED_KEY_PATTERN.sub(repl, text)
 def is_tracking_link(url: str) -> bool:
-
     lowered = url.lower()
-
-    return any(snippet in lowered for snippet in TRACKING_SNIPPETS)
-
-
-
-
+    parsed = urlparse(lowered)
+    host = parsed.netloc or lowered
+    return any(snippet in host for snippet in TRACKING_SNIPPETS)
 
 def normalize_text(value):
 
@@ -176,9 +172,10 @@ def clean_url(value: str) -> Optional[str]:
     return decoded if decoded else None
 
 
+
 def extract_landing_page(js_text: str) -> Optional[str]:
-    # try explicit final_url assignment first
     decoded = unescape_js_fragment(js_text, rounds=2)
+
     match = re.search(r"final_url:\s*'([^']+)'", decoded)
     if match:
         candidate = clean_url(match.group(1))
@@ -191,19 +188,33 @@ def extract_landing_page(js_text: str) -> Optional[str]:
         if candidate and not is_tracking_link(candidate):
             return candidate
 
-    # fall back to ad click redirect url
-    ad_match = AD_CLICK_PATTERN.search(js_text)
-    if ad_match:
-        candidate = clean_url(ad_match.group(0))
-        if candidate:
-            parsed = urlparse(candidate)
-            qs = parse_qs(parsed.query)
-            landing = qs.get("adurl", [""])[0]
-            landing = clean_url(landing)
-            if landing and not is_tracking_link(landing):
-                return landing
+    adurl_index = decoded.find("adurl=")
+    if adurl_index != -1:
+        start_idx = adurl_index + len("adurl=")
+        if start_idx < len(decoded) and decoded[start_idx] in ("'", '"'):
+            start_idx += 1
+        end_idx = decoded.find("'", start_idx)
+        if end_idx == -1:
+            end_idx = decoded.find('"', start_idx)
+        if end_idx == -1:
+            end_idx = len(decoded)
+        landing_raw = decoded[start_idx:end_idx]
+        landing = clean_url(landing_raw.strip(" '"))
+        if landing and not is_tracking_link(landing):
+            return landing
 
-    # ultimate fallback: first non-tracking https URL in decoded text
+    dest_match = re.search(r"destination_url:\s*'([^']+)'", decoded)
+    if dest_match:
+        candidate = clean_url(dest_match.group(1))
+        if candidate and not is_tracking_link(candidate):
+            return candidate
+
+    landing_match = re.search(r"landing_page_url:\s*'([^']+)'", decoded)
+    if landing_match:
+        candidate = clean_url(landing_match.group(1))
+        if candidate and not is_tracking_link(candidate):
+            return candidate
+
     for raw_url in GENERIC_URL_PATTERN.findall(decoded):
         if is_tracking_link(raw_url):
             continue
@@ -212,9 +223,6 @@ def extract_landing_page(js_text: str) -> Optional[str]:
             return cleaned
 
     return None
-
-
-
 
 def extract_video_id(value: Optional[str]) -> Optional[str]:
     if not isinstance(value, str):
@@ -467,3 +475,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
